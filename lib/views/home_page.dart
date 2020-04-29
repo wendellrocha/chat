@@ -11,8 +11,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  var objeto = {};
   final _messageList = <ChatMessage>[];
   final _controllerText = new TextEditingController();
+  bool password = false;
 
   @override
   void initState() {
@@ -87,9 +89,20 @@ class _HomePageState extends State<HomePage> {
     var intent = response.queryResult.intent.displayName;
     var action = response.queryResult.action;
 
+    print('query: $query');
     print('intent: $intent');
     print('action: $action');
-  
+
+    if (action == null && (intent != null && intent != 'pergunta-nome')) {
+      if (intent == 'telefone') {
+        var aux = query.split(' ');
+        objeto['ddd_cel'] = aux[0];
+        objeto['celular'] = aux[1];
+      } else {
+        objeto[intent] = query;
+      }
+    }
+
     var respostas = response.getListMessage();
     for (var i = 0; i < respostas.length; i++) {
       _addMessage(
@@ -97,6 +110,8 @@ class _HomePageState extends State<HomePage> {
           text: respostas[i]['text']['text'][0] ?? '',
           type: ChatMessageType.received);
     }
+
+    print('objeto: $objeto');
   }
 
   // Campo para escrever a mensagem

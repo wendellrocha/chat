@@ -25,7 +25,10 @@ dependencies:
     sdk: flutter
 
   flutter_dialogflow: ^0.1.3
-
+  meteorify:
+    git:
+      url: git://github.com/wendellrocha/meteorify.git
+      ref: master
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
