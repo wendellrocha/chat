@@ -4,6 +4,7 @@ import 'package:chat/models/chat_message.dart';
 import 'package:chat/widgets/chat_message_list_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dialogflow/dialogflow_v2.dart';
+import 'package:meteorify/meteorify.dart';
 
 class HomePage extends StatefulWidget {
   @override
@@ -14,14 +15,41 @@ class _HomePageState extends State<HomePage> {
   var objeto = {};
   final _messageList = <ChatMessage>[];
   final _controllerText = new TextEditingController();
-  bool password = false;
+  bool isPassword = false;
+  bool isPasswordConfirm = true;
+  bool isPhone = false;
+  bool isEmail = false;
+  bool isPin = false;
+  bool isEmailPin = false;
+  var codigo;
+  var codigoEmail;
+
+  final phone = new InputDecoration.collapsed(
+    hintText: "DD 999999999",
+  );
+
+  final pin = new InputDecoration.collapsed(
+    hintText: "9999",
+  );
+
+  final text = new InputDecoration.collapsed(
+    hintText: "Enviar mensagem",
+  );
+
+  void login() async {
+    String loginToken =
+        await Meteor.loginWithPassword('teste@gmail.com', 'teste');
+    print('token: $loginToken');
+  }
 
   @override
   void initState() {
     super.initState();
     Timer(Duration(seconds: 2), () {
-      _dialogFlowRequest(query: 'nome');
+      _dialogFlowRequest(query: 'nome', content: MessageContent.normal);
     });
+
+    login();
   }
 
   @override
@@ -60,55 +88,151 @@ class _HomePageState extends State<HomePage> {
   }
 
   // Envia uma mensagem com o padrão a direita
-  void _sendMessage({String text}) {
+  void _sendMessage({String text, MessageContent content}) {
     _controllerText.clear();
-    _addMessage(name: 'Usuário', text: text, type: ChatMessageType.sent);
+    _addMessage(
+        name: 'Usuário',
+        text: text,
+        type: ChatMessageType.sent,
+        content: content);
   }
 
   // Adiciona uma mensagem na lista de mensagens
-  void _addMessage({String name, String text, ChatMessageType type}) {
-    var message = ChatMessage(text: text, name: name, type: type);
+  void _addMessage(
+      {String name,
+      String text,
+      ChatMessageType type,
+      MessageContent content}) {
+    var message =
+        ChatMessage(text: text, name: name, type: type, content: content);
     setState(() {
       _messageList.insert(0, message);
     });
 
     if (type == ChatMessageType.sent) {
       // Envia a mensagem para o chatbot e aguarda sua resposta
-      _dialogFlowRequest(query: message.text);
+      _dialogFlowRequest(query: message.text, content: content);
     }
   }
 
   // Método incompleto ainda
-  Future _dialogFlowRequest({String query}) async {
+  Future _dialogFlowRequest({String query, MessageContent content}) async {
+    var intent;
+    var action;
     AuthGoogle authGoogle =
         await AuthGoogle(fileJson: "assets/credentials.json").build();
     Dialogflow dialogflow =
         Dialogflow(authGoogle: authGoogle, language: "pt-BR");
-    AIResponse response = await dialogflow.detectIntent(query);
-
-    var intent = response.queryResult.intent.displayName;
-    var action = response.queryResult.action;
+    AIResponse response;
+    if (content == MessageContent.normal) {
+      response = await dialogflow.detectIntent(query);
+      intent = response.queryResult.intent.displayName;
+      action = response.queryResult.action;
+    }
 
     print('query: $query');
     print('intent: $intent');
     print('action: $action');
 
-    if (action == null && (intent != null && intent != 'pergunta-nome')) {
+    if (action == null && (intent != 'pergunta-nome')) {
+      if (intent == 'telefone-pin') {
+        if (isPhone && (codigo == query)) {
+          await dialogflow.detectIntent(query);
+          isPhone = false;
+        } else {
+          await dialogflow.detectIntent('eeeee');
+        }
+
+        isPin = false;
+      }
+
       if (intent == 'telefone') {
         var aux = query.split(' ');
         objeto['ddd_cel'] = aux[0];
         objeto['celular'] = aux[1];
+
+        isPhone = true;
+
+        var telefone = aux[0] + aux[1];
+
+        codigo = await Meteor.call('conta.verificar.telefone', [telefone]);
+        isPin = true;
+
+        print('response: $codigo');
+      }
+
+      print(content);
+
+      if (content == MessageContent.email) {
+        codigoEmail = await Meteor.call('conta.verificar.email', [query]);
+        isPin = true;
+        isEmailPin = true;
+        _addMessage(
+            name: 'Psiu',
+            text:
+                'Acredito que o PIN já chegou no e-mail. Me fala o código que você recebeu.' ??
+                    '',
+            type: ChatMessageType.received,
+            content: MessageContent.normal);
+
+        print('Codigo: $codigoEmail');
+        print('Query: $query');
+      }
+
+      if (content == MessageContent.emailPin) {
+        print('email pin');
+        print('Codigo Email: $codigoEmail');
+        print('Query: $query');
+        print(codigoEmail.toString() == query);
+        if (codigoEmail.toString() == query) {
+          _addMessage(
+              name: 'Psiu',
+              text:
+                  'Ótimo ${objeto["nome"]}! Seu e-mail já está confirmado em nosso sistema.' ??
+                      '',
+              type: ChatMessageType.received,
+              content: MessageContent.normal);
+          _addMessage(
+              name: 'Psiu',
+              text:
+                  'Para finalizarmos, preciso apenas te pedir para criar uma senha. Esses serão os seus dados de acesso para o login. 🙂' ??
+                      '',
+              type: ChatMessageType.received,
+              content: MessageContent.normal);
+          _addMessage(
+              name: 'Psiu',
+              text:
+                  'Ótimo! Agora crie sua senha. Prometo que não vou olhar! 🙈' ??
+                      '',
+              type: ChatMessageType.received,
+              content: MessageContent.normal);
+          isEmail = false;
+          isEmailPin = false;
+          isPassword = true;
+        }
+        isPin = false;
+      }
+      if (content == MessageContent.email) {
+        objeto['email'] = query;
+      } else if (content == MessageContent.emailPin) {
+        objeto['emailPin'] = query;
       } else {
         objeto[intent] = query;
       }
     }
 
-    var respostas = response.getListMessage();
-    for (var i = 0; i < respostas.length; i++) {
-      _addMessage(
-          name: 'Psiu',
-          text: respostas[i]['text']['text'][0] ?? '',
-          type: ChatMessageType.received);
+    if (content == MessageContent.normal) {
+      var respostas = response.getListMessage();
+      for (var i = 0; i < respostas.length; i++) {
+        _isEmail(respostas[i]['text']['text'][0]);
+        _isPhone(respostas[i]['text']['text'][0]);
+
+        _addMessage(
+            name: 'Psiu',
+            text: respostas[i]['text']['text'][0] ?? '',
+            type: ChatMessageType.received,
+            content: MessageContent.normal);
+      }
     }
 
     print('objeto: $objeto');
@@ -118,10 +242,11 @@ class _HomePageState extends State<HomePage> {
   Widget _buildTextField() {
     return new Flexible(
       child: new TextField(
+        obscureText: isPassword,
+        keyboardType:
+            (isPhone || isPin ? TextInputType.number : TextInputType.text),
         controller: _controllerText,
-        decoration: new InputDecoration.collapsed(
-          hintText: "Enviar mensagem",
-        ),
+        decoration: isPhone ? phone : isPin ? pin : text,
       ),
     );
   }
@@ -133,8 +258,20 @@ class _HomePageState extends State<HomePage> {
       child: new IconButton(
           icon: new Icon(Icons.send, color: Theme.of(context).accentColor),
           onPressed: () {
+            FocusScope.of(context).requestFocus(new FocusNode());
             if (_controllerText.text.isNotEmpty) {
-              _sendMessage(text: _controllerText.text);
+              if (validateEmail(_controllerText.text)) {
+                _sendMessage(
+                    text: _controllerText.text, content: MessageContent.email);
+                isEmail = true;
+              } else if (isEmailPin) {
+                _sendMessage(
+                    text: _controllerText.text,
+                    content: MessageContent.emailPin);
+              } else {
+                _sendMessage(
+                    text: _controllerText.text, content: MessageContent.normal);
+              }
             }
           }),
     );
@@ -152,5 +289,24 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  void _isEmail(String text) {
+    text.contains('e-mail') ? isEmail = true : isEmail = false;
+  }
+
+  void _isPhone(String text) {
+    text.contains('celular') ? isPhone = true : isPhone = false;
+  }
+
+  void _isPassword(String text) {
+    text.contains('senha') ? isPassword = true : isPassword = false;
+  }
+
+  bool validateEmail(String value) {
+    Pattern pattern =
+        r'^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$';
+    RegExp regex = new RegExp(pattern);
+    return (!regex.hasMatch(value)) ? false : true;
   }
 }
