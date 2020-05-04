@@ -130,6 +130,13 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "0.11.4"
+  mask_text_input_formatter:
+    dependency: "direct main"
+    description:
+      name: mask_text_input_formatter
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "1.0.6"
   matcher:
     dependency: transitive
     description:
@@ -149,7 +156,7 @@ packages:
     description:
       path: "."
       ref: master
-      resolved-ref: e1cbbff62d82026966bd6c40d99bc44edb58a323
+      resolved-ref: "601f560a495ca0a5c8bbbffa6d38d9f7ba4d6318"
       url: "git://github.com/wendellrocha/meteorify.git"
     source: git
     version: "1.0.6"

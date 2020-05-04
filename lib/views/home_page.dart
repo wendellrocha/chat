@@ -5,6 +5,7 @@ import 'package:chat/widgets/chat_message_list_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dialogflow/dialogflow_v2.dart';
 import 'package:meteorify/meteorify.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class HomePage extends StatefulWidget {
   @override
@@ -15,31 +16,27 @@ class _HomePageState extends State<HomePage> {
   var objeto = {};
   final _messageList = <ChatMessage>[];
   final _controllerText = new TextEditingController();
+  var maskFormatter = new MaskTextInputFormatter(
+      mask: '## #########', filter: {"#": RegExp(r'[0-9]')});
   bool isPassword = false;
-  bool isPasswordConfirm = true;
+  bool isPasswordConfirm = false;
   bool isPhone = false;
   bool isEmail = false;
   bool isPin = false;
   bool isEmailPin = false;
+  bool isVisible = true;
   var codigo;
   var codigoEmail;
-
-  final phone = new InputDecoration.collapsed(
-    hintText: "DD 999999999",
-  );
-
-  final pin = new InputDecoration.collapsed(
-    hintText: "9999",
-  );
-
-  final text = new InputDecoration.collapsed(
-    hintText: "Enviar mensagem",
-  );
+  var password;
+  var passwordConfirm;
 
   void login() async {
-    String loginToken =
-        await Meteor.loginWithPassword('teste@gmail.com', 'teste');
-    print('token: $loginToken');
+    await Meteor.loginWithPassword('teste@gmail.com', 'teste');
+  }
+
+  cadastrarUsuario(Object doc) async {
+    var id = await Meteor.call('conta.insert', [doc]);
+    return id;
   }
 
   @override
@@ -90,11 +87,29 @@ class _HomePageState extends State<HomePage> {
   // Envia uma mensagem com o padrão a direita
   void _sendMessage({String text, MessageContent content}) {
     _controllerText.clear();
-    _addMessage(
-        name: 'Usuário',
-        text: text,
-        type: ChatMessageType.sent,
-        content: content);
+
+    if (isPassword) {
+      password = text;
+      _addMessage(
+          name: 'Usuário',
+          text: '********',
+          type: ChatMessageType.sent,
+          content: content);
+    } else if (isPasswordConfirm) {
+      print(text);
+      passwordConfirm = text;
+      _addMessage(
+          name: 'Usuário',
+          text: '********',
+          type: ChatMessageType.sent,
+          content: MessageContent.passwordConfirm);
+    } else {
+      _addMessage(
+          name: 'Usuário',
+          text: text,
+          type: ChatMessageType.sent,
+          content: content);
+    }
   }
 
   // Adiciona uma mensagem na lista de mensagens
@@ -113,6 +128,10 @@ class _HomePageState extends State<HomePage> {
       // Envia a mensagem para o chatbot e aguarda sua resposta
       _dialogFlowRequest(query: message.text, content: content);
     }
+
+    if (content == MessageContent.end) {
+      cadastrarUsuario(objeto);
+    }
   }
 
   // Método incompleto ainda
@@ -130,10 +149,6 @@ class _HomePageState extends State<HomePage> {
       action = response.queryResult.action;
     }
 
-    print('query: $query');
-    print('intent: $intent');
-    print('action: $action');
-
     if (action == null && (intent != 'pergunta-nome')) {
       if (intent == 'telefone-pin') {
         if (isPhone && (codigo == query)) {
@@ -150,6 +165,7 @@ class _HomePageState extends State<HomePage> {
         var aux = query.split(' ');
         objeto['ddd_cel'] = aux[0];
         objeto['celular'] = aux[1];
+        objeto['username'] = aux[0].trim() + aux[1].trim();
 
         isPhone = true;
 
@@ -160,8 +176,6 @@ class _HomePageState extends State<HomePage> {
 
         print('response: $codigo');
       }
-
-      print(content);
 
       if (content == MessageContent.email) {
         codigoEmail = await Meteor.call('conta.verificar.email', [query]);
@@ -174,15 +188,10 @@ class _HomePageState extends State<HomePage> {
                     '',
             type: ChatMessageType.received,
             content: MessageContent.normal);
-
-        print('Codigo: $codigoEmail');
-        print('Query: $query');
       }
 
       if (content == MessageContent.emailPin) {
-        print('email pin');
         print('Codigo Email: $codigoEmail');
-        print('Query: $query');
         print(codigoEmail.toString() == query);
         if (codigoEmail.toString() == query) {
           _addMessage(
@@ -212,12 +221,38 @@ class _HomePageState extends State<HomePage> {
         }
         isPin = false;
       }
+      if (isPasswordConfirm) {
+        if (password == passwordConfirm) {
+          objeto['password'] = passwordConfirm;
+          _addMessage(
+              name: 'Psiu',
+              text:
+                  'Tudo certo, ${objeto["nome"]}! 🙂👏 Agora você precisa aceitar os termos de privacidade.' ??
+                      '',
+              type: ChatMessageType.received,
+              content: MessageContent.end);
+        }
+      }
+
+      if (content == MessageContent.password) {
+        isPasswordConfirm = true;
+        _addMessage(
+            name: 'Psiu',
+            text:
+                'Top! Digite-a novamente para que o sistema possa validá-la.' ??
+                    '',
+            type: ChatMessageType.received,
+            content: MessageContent.normal);
+      }
+
       if (content == MessageContent.email) {
         objeto['email'] = query;
       } else if (content == MessageContent.emailPin) {
         objeto['emailPin'] = query;
       } else {
-        objeto[intent] = query;
+        if (intent != null) {
+          objeto[intent] = query;
+        }
       }
     }
 
@@ -226,6 +261,7 @@ class _HomePageState extends State<HomePage> {
       for (var i = 0; i < respostas.length; i++) {
         _isEmail(respostas[i]['text']['text'][0]);
         _isPhone(respostas[i]['text']['text'][0]);
+        _isPassword(respostas[i]['text']['text'][0]);
 
         _addMessage(
             name: 'Psiu',
@@ -240,13 +276,75 @@ class _HomePageState extends State<HomePage> {
 
   // Campo para escrever a mensagem
   Widget _buildTextField() {
+    if (isPhone) {
+      return new Flexible(
+        child: new TextField(
+          keyboardType: TextInputType.phone,
+          controller: _controllerText,
+          inputFormatters: [maskFormatter],
+          decoration: new InputDecoration.collapsed(
+            hintText: "Digite seu telefone",
+          ),
+        ),
+      );
+    }
+
+    if (isPin || isEmailPin) {
+      return new Flexible(
+        child: new TextField(
+          keyboardType: TextInputType.number,
+          controller: _controllerText,
+          decoration: new InputDecoration.collapsed(
+            hintText: "Digite o PIN",
+          ),
+          maxLength: 6,
+        ),
+      );
+    }
+
+    if (isPassword || isPasswordConfirm) {
+      return new Flexible(
+        child: new TextField(
+          obscureText: isVisible,
+          keyboardType: TextInputType.visiblePassword,
+          controller: _controllerText,
+          decoration: new InputDecoration(
+            hintText: "Digite sua senha",
+            suffixIcon: IconButton(
+              icon: Icon(
+                isVisible ? Icons.visibility : Icons.visibility_off,
+                semanticLabel: isVisible ? 'Ocultar senha' : 'Mostrar senha',
+              ),
+              onPressed: () {
+                setState(() {
+                  isVisible ^= true;
+                });
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (isEmail) {
+      return new Flexible(
+        child: new TextField(
+          keyboardType: TextInputType.emailAddress,
+          controller: _controllerText,
+          decoration: new InputDecoration.collapsed(
+            hintText: "Digite seu e-mail",
+          ),
+        ),
+      );
+    }
+
     return new Flexible(
       child: new TextField(
-        obscureText: isPassword,
-        keyboardType:
-            (isPhone || isPin ? TextInputType.number : TextInputType.text),
+        keyboardType: TextInputType.text,
         controller: _controllerText,
-        decoration: isPhone ? phone : isPin ? pin : text,
+        decoration: new InputDecoration.collapsed(
+          hintText: "Enviar mensagem",
+        ),
       ),
     );
   }
@@ -268,6 +366,16 @@ class _HomePageState extends State<HomePage> {
                 _sendMessage(
                     text: _controllerText.text,
                     content: MessageContent.emailPin);
+              } else if (isPassword) {
+                _sendMessage(
+                    text: _controllerText.text,
+                    content: MessageContent.password);
+                isPasswordConfirm = true;
+                isPassword = false;
+              } else if (isPasswordConfirm) {
+                _sendMessage(
+                    text: _controllerText.text,
+                    content: MessageContent.passwordConfirm);
               } else {
                 _sendMessage(
                     text: _controllerText.text, content: MessageContent.normal);

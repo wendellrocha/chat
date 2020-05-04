@@ -1,5 +1,5 @@
 enum ChatMessageType { sent, received }
-enum MessageContent { normal, email, emailPin, password, passwordConfirm }
+enum MessageContent { normal, email, emailPin, password, passwordConfirm, end }
 
 class ChatMessage {
   final String name;
