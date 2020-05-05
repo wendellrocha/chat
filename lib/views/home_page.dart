@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:chat/constants/constants.dart';
 import 'package:chat/models/chat_message.dart';
 import 'package:chat/widgets/chat_message_list_item.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dialogflow/dialogflow_v2.dart';
 import 'package:meteorify/meteorify.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
@@ -13,40 +13,43 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  var objeto = {};
   final _messageList = <ChatMessage>[];
   final _controllerText = new TextEditingController();
+
+  var usuario;
+  var codigo;
+  var codigoEmail;
+  var email;
+  var password;
+  var passwordConfirm;
   var maskFormatter = new MaskTextInputFormatter(
       mask: '## #########', filter: {"#": RegExp(r'[0-9]')});
+
   bool isPassword = false;
   bool isPasswordConfirm = false;
   bool isPhone = false;
+  bool isPhonePin = false;
   bool isEmail = false;
   bool isPin = false;
   bool isEmailPin = false;
   bool isVisible = true;
-  var codigo;
-  var codigoEmail;
-  var password;
-  var passwordConfirm;
-
-  void login() async {
-    await Meteor.loginWithPassword('teste@gmail.com', 'teste');
-  }
-
-  cadastrarUsuario(Object doc) async {
-    var id = await Meteor.call('conta.insert', [doc]);
-    return id;
-  }
+  bool isPreference = true;
 
   @override
   void initState() {
     super.initState();
     Timer(Duration(seconds: 2), () {
-      _dialogFlowRequest(query: 'nome', content: MessageContent.normal);
+      _addMessage(
+          name: Constants.PSIU,
+          text: Constants.OLA,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
+      _addMessage(
+          name: Constants.PSIU,
+          text: Constants.PREFERENCIA,
+          type: ChatMessageType.received,
+          content: MessageContent.preference);
     });
-
-    login();
   }
 
   @override
@@ -92,7 +95,7 @@ class _HomePageState extends State<HomePage> {
       password = text;
       _addMessage(
           name: 'Usuário',
-          text: '********',
+          text: '*' * text.length,
           type: ChatMessageType.sent,
           content: content);
     } else if (isPasswordConfirm) {
@@ -100,7 +103,7 @@ class _HomePageState extends State<HomePage> {
       passwordConfirm = text;
       _addMessage(
           name: 'Usuário',
-          text: '********',
+          text: '*' * text.length,
           type: ChatMessageType.sent,
           content: MessageContent.passwordConfirm);
     } else {
@@ -125,153 +128,125 @@ class _HomePageState extends State<HomePage> {
     });
 
     if (type == ChatMessageType.sent) {
-      // Envia a mensagem para o chatbot e aguarda sua resposta
-      _dialogFlowRequest(query: message.text, content: content);
+      _dialogResponse(query: message.text, content: content);
+    }
+
+    if (content == MessageContent.preference) {
+      isPreference = true;
     }
 
     if (content == MessageContent.end) {
-      cadastrarUsuario(objeto);
+      // jogar o usuário para a tela de login
     }
   }
 
-  // Método incompleto ainda
-  Future _dialogFlowRequest({String query, MessageContent content}) async {
-    var intent;
-    var action;
-    AuthGoogle authGoogle =
-        await AuthGoogle(fileJson: "assets/credentials.json").build();
-    Dialogflow dialogflow =
-        Dialogflow(authGoogle: authGoogle, language: "pt-BR");
-    AIResponse response;
-    if (content == MessageContent.normal) {
-      response = await dialogflow.detectIntent(query);
-      intent = response.queryResult.intent.displayName;
-      action = response.queryResult.action;
+  void _dialogResponse({String query, MessageContent content}) async {
+    if (content == MessageContent.preferenceCel) {
+      isPreference = false;
+      isPhone = true;
+      _addMessage(
+          name: 'Psiu',
+          text: Constants.PREFERENCIA_CELULAR,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
     }
 
-    if (action == null && (intent != 'pergunta-nome')) {
-      if (intent == 'telefone-pin') {
-        if (isPhone && (codigo == query)) {
-          await dialogflow.detectIntent(query);
-          isPhone = false;
-        } else {
-          await dialogflow.detectIntent('eeeee');
-        }
+    if (content == MessageContent.preferenceEmail) {
+      isPreference = false;
+      isEmail = true;
+      _addMessage(
+          name: 'Psiu',
+          text: Constants.PREFERENCIA_EMAIL,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
+    }
 
-        isPin = false;
-      }
+    if (content == MessageContent.phone) {
+      var aux = query.split(' ');
+      var dddCel = aux[0];
+      var celular = aux[1];
+      var telefone = dddCel.trim() + celular.trim();
 
-      if (intent == 'telefone') {
-        var aux = query.split(' ');
-        objeto['ddd_cel'] = aux[0];
-        objeto['celular'] = aux[1];
-        objeto['username'] = aux[0].trim() + aux[1].trim();
+      usuario = await getUsuario(telefone);
+      codigo = await Meteor.call('conta.verificar.telefone', [telefone]);
+      isPin = true;
+      isPhonePin = true;
+      isPhone = false;
+      _addMessage(
+          name: 'Psiu',
+          text: Constants.PIN_CELULAR,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
+    }
 
-        isPhone = true;
+    if (content == MessageContent.email) {
+      usuario = await getUsuario(query);
+      codigoEmail = await Meteor.call('conta.verificar.email', [query]);
+      isPin = true;
+      isEmailPin = true;
+      _addMessage(
+          name: 'Psiu',
+          text: Constants.PIN_EMAIL,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
+    }
 
-        var telefone = aux[0] + aux[1];
-
-        codigo = await Meteor.call('conta.verificar.telefone', [telefone]);
-        isPin = true;
-
-        print('response: $codigo');
-      }
-
-      if (content == MessageContent.email) {
-        codigoEmail = await Meteor.call('conta.verificar.email', [query]);
-        isPin = true;
-        isEmailPin = true;
+    if (content == MessageContent.emailPin) {
+      if (codigoEmail.toString() == query) {
         _addMessage(
             name: 'Psiu',
             text:
-                'Acredito que o PIN já chegou no e-mail. Me fala o código que você recebeu.' ??
-                    '',
+                'Ótimo ${usuario["nome"]}! Agora crie a sua senha enquanto eu tomo um café ☕',
             type: ChatMessageType.received,
             content: MessageContent.normal);
+        isEmail = false;
+        isEmailPin = false;
+        isPassword = true;
       }
+      isPin = false;
+    }
 
-      if (content == MessageContent.emailPin) {
-        print('Codigo Email: $codigoEmail');
-        print(codigoEmail.toString() == query);
-        if (codigoEmail.toString() == query) {
-          _addMessage(
-              name: 'Psiu',
-              text:
-                  'Ótimo ${objeto["nome"]}! Seu e-mail já está confirmado em nosso sistema.' ??
-                      '',
-              type: ChatMessageType.received,
-              content: MessageContent.normal);
-          _addMessage(
-              name: 'Psiu',
-              text:
-                  'Para finalizarmos, preciso apenas te pedir para criar uma senha. Esses serão os seus dados de acesso para o login. 🙂' ??
-                      '',
-              type: ChatMessageType.received,
-              content: MessageContent.normal);
-          _addMessage(
-              name: 'Psiu',
-              text:
-                  'Ótimo! Agora crie sua senha. Prometo que não vou olhar! 🙈' ??
-                      '',
-              type: ChatMessageType.received,
-              content: MessageContent.normal);
-          isEmail = false;
-          isEmailPin = false;
-          isPassword = true;
-        }
-        isPin = false;
-      }
-      if (isPasswordConfirm) {
-        if (password == passwordConfirm) {
-          objeto['password'] = passwordConfirm;
-          _addMessage(
-              name: 'Psiu',
-              text:
-                  'Tudo certo, ${objeto["nome"]}! 🙂👏 Agora você precisa aceitar os termos de privacidade.' ??
-                      '',
-              type: ChatMessageType.received,
-              content: MessageContent.end);
-        }
-      }
-
-      if (content == MessageContent.password) {
-        isPasswordConfirm = true;
+    if (content == MessageContent.phonePin) {
+      if (codigo.toString() == query) {
         _addMessage(
             name: 'Psiu',
             text:
-                'Top! Digite-a novamente para que o sistema possa validá-la.' ??
-                    '',
+                'Ótimo ${usuario["nome"]}! Agora crie a sua senha enquanto eu tomo um café ☕',
             type: ChatMessageType.received,
             content: MessageContent.normal);
+        isEmail = false;
+        isEmailPin = false;
+        isPassword = true;
       }
-
-      if (content == MessageContent.email) {
-        objeto['email'] = query;
-      } else if (content == MessageContent.emailPin) {
-        objeto['emailPin'] = query;
-      } else {
-        if (intent != null) {
-          objeto[intent] = query;
-        }
-      }
+      isPin = false;
     }
 
-    if (content == MessageContent.normal) {
-      var respostas = response.getListMessage();
-      for (var i = 0; i < respostas.length; i++) {
-        _isEmail(respostas[i]['text']['text'][0]);
-        _isPhone(respostas[i]['text']['text'][0]);
-        _isPassword(respostas[i]['text']['text'][0]);
-
+    if (isPasswordConfirm) {
+      if (password == passwordConfirm) {
+        var isOk = await Meteor.call(
+            'conta.reseta.senha', [usuario['id'], passwordConfirm]);
+        print(isOk);
         _addMessage(
             name: 'Psiu',
-            text: respostas[i]['text']['text'][0] ?? '',
+            text:
+                'Tudo certo, ${usuario["nome"]}! 🙂👏 Agora você já pode fazer o login com a sua nova senha.',
             type: ChatMessageType.received,
-            content: MessageContent.normal);
+            content: MessageContent.end);
       }
     }
 
-    print('objeto: $objeto');
+    if (content == MessageContent.password) {
+      isPasswordConfirm = true;
+      _addMessage(
+          name: 'Psiu',
+          text: Constants.SENHA_CONFIRM,
+          type: ChatMessageType.received,
+          content: MessageContent.normal);
+    }
+
+    if (content == MessageContent.email) {
+      email = query;
+    }
   }
 
   // Campo para escrever a mensagem
@@ -376,6 +351,32 @@ class _HomePageState extends State<HomePage> {
                 _sendMessage(
                     text: _controllerText.text,
                     content: MessageContent.passwordConfirm);
+              } else if (isPreference) {
+                if (_isPhone(_controllerText.text)) {
+                  _sendMessage(
+                      text: _controllerText.text,
+                      content: MessageContent.preferenceCel);
+                } else if (_isEmail(_controllerText.text)) {
+                  _sendMessage(
+                      text: _controllerText.text,
+                      content: MessageContent.preferenceEmail);
+                } else {
+                  _sendMessage(
+                      text: _controllerText.text,
+                      content: MessageContent.normal);
+                  _addMessage(
+                      name: 'Psiu',
+                      text: Constants.UNKNOWN,
+                      type: ChatMessageType.received,
+                      content: MessageContent.normal);
+                }
+              } else if (isPhone) {
+                _sendMessage(
+                    text: _controllerText.text, content: MessageContent.phone);
+              } else if (isPhonePin) {
+                _sendMessage(
+                    text: _controllerText.text,
+                    content: MessageContent.phonePin);
               } else {
                 _sendMessage(
                     text: _controllerText.text, content: MessageContent.normal);
@@ -399,16 +400,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _isEmail(String text) {
-    text.contains('e-mail') ? isEmail = true : isEmail = false;
+  Future getUsuario(String query) async {
+    var result = await Meteor.call('conta.verifica.usuario', [query]);
+    //var doc = Map<String, dynamic>.from();
+    var doc = new Map<String, dynamic>.from(result);
+    print('usuario: $doc');
+    return doc;
   }
 
-  void _isPhone(String text) {
-    text.contains('celular') ? isPhone = true : isPhone = false;
+  bool _isEmail(String text) {
+    RegExp regExp = new RegExp(r"(email|e-mail)", caseSensitive: false);
+    return regExp.hasMatch(text);
   }
 
-  void _isPassword(String text) {
-    text.contains('senha') ? isPassword = true : isPassword = false;
+  bool _isPhone(String text) {
+    RegExp regExp = new RegExp(r"(celular)", caseSensitive: false);
+    return regExp.hasMatch(text);
   }
 
   bool validateEmail(String value) {
